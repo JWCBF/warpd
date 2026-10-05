@@ -145,6 +145,8 @@ void way_mouse_click(int btn)
 
 void way_mouse_get_position(struct screen **scr, int *x, int *y)
 {
+	refresh_ptr_position();
+
 	if (scr)
 		*scr = ptr.scr;
 	if (x)

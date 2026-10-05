@@ -8,9 +8,9 @@
 static void noop() {}
 
 static void xdg_output_handle_logical_position(void *data,
-					       struct zxdg_output_v1
-					       *zxdg_output_v1, int32_t x,
-					       int32_t y)
+			                       struct zxdg_output_v1
+			                       *zxdg_output_v1, int32_t x,
+			                       int32_t y)
 {
 	struct screen *scr = data;
 
@@ -20,9 +20,9 @@ static void xdg_output_handle_logical_position(void *data,
 }
 
 static void xdg_output_handle_logical_size(void *data,
-					   struct zxdg_output_v1
-					   *zxdg_output_v1, int32_t w,
-					   int32_t h)
+				           struct zxdg_output_v1
+				           *zxdg_output_v1, int32_t w,
+				           int32_t h)
 {
 	struct screen *scr = data;
 
@@ -71,22 +71,24 @@ static struct wl_pointer_listener wl_pointer_listener = {
 	.axis_discrete = noop,
 };
 
-/* 
- * Register a pointer_listener and listen for enter events after
- * creating a full screen surface for each screen in order to capture the initial
- * cursor position. I couldn't find a better way to achieve this :/.
+/*
+ * Determine the current cursor position by creating full screen
+ * overlay surfaces and listening for pointer enter events.
+ *
+ * This is called once at init and then on demand whenever the cursor
+ * position needs to be re-discovered (e.g. when the cursor has moved
+ * to a different monitor since the last query).
  */
-static void discover_pointer_location()
+void refresh_ptr_position()
 {
 	size_t i;
-
-	wl_pointer_add_listener(wl_seat_get_pointer(wl.seat), &wl_pointer_listener, NULL);
 
 	for (i = 0; i < nr_screens; i++) {
 		struct screen *scr = &screens[i];
 		scr->overlay = create_surface(scr, 0, 0, scr->w, scr->h, 0);
 	}
 
+	ptr.scr = NULL;
 	wl_display_flush(wl.dpy);
 	while (!ptr.scr) {
 		/*
@@ -100,6 +102,17 @@ static void discover_pointer_location()
 
 		wl_display_dispatch(wl.dpy);
 	}
+
+	/*
+	 * Undo the agitation so the cursor does not drift.
+	 * Move the cursor back and adjust the captured coordinates.
+	 */
+	zwlr_virtual_pointer_v1_motion(wl.ptr, 0,
+					 wl_fixed_from_int(-1),
+					 wl_fixed_from_int(-1));
+	ptr.x -= 1;
+	ptr.y -= 1;
+	wl_display_flush(wl.dpy);
 
 	for (i = 0; i < nr_screens; i++) {
 		struct screen *scr = &screens[i];
@@ -175,8 +188,8 @@ static void init_screen_pool(struct screen *scr)
 	close(fd);
 
 	cairo_surface = cairo_image_surface_create_for_data(buf,
-							    CAIRO_FORMAT_ARGB32, scr->w,
-							    scr->h, scr->stride);
+				CAIRO_FORMAT_ARGB32, scr->w,
+				scr->h, scr->stride);
 	scr->cr = cairo_create(cairo_surface);
 }
 
@@ -193,7 +206,7 @@ void init_screen()
 							  scr->wl_output);
 
 		zxdg_output_v1_add_listener(scr->xdg_output,
-					    &zxdg_output_v1_listener, scr);
+				    &zxdg_output_v1_listener, scr);
 
 		scr->state = 0;
 		do {
@@ -206,5 +219,7 @@ void init_screen()
 		init_screen_pool(scr);
 	}
 
-	discover_pointer_location();
+	wl_pointer_add_listener(wl_seat_get_pointer(wl.seat), &wl_pointer_listener, NULL);
+
+	refresh_ptr_position();
 }
