@@ -366,7 +366,7 @@ struct input_event *x_input_wait(struct input_event *events, size_t sz)
 {
 	size_t i;
 	static struct input_event ev;
-	struct input_evnet *ret = NULL;
+	struct input_event *ret = NULL;
 
 	for (i = 0; i < sz; i++) {
 		struct input_event *ev = &events[i];
@@ -383,8 +383,8 @@ struct input_event *x_input_wait(struct input_event *events, size_t sz)
 
 			x_input_grab_keyboard();
 
-			ret = &ev;
-			goto exit;
+                ret = (struct input_event *)&ev;
+    		goto exit;
 		} else {
 			size_t i;
 			for (i = 0; i < nr_monitored_files; i++) {

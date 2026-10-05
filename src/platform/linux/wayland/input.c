@@ -63,6 +63,56 @@ static void handle_key(void *data,
 	ev->mods = x_active_mods;
 }
 
+/*
+ * Normalize numpad key names so they match hint characters.
+ *
+ * The default PC XKB keymap maps numpad keys at level 0 to *navigation*
+ * names (e.g. "KP_Home" for the 7 key) and at level 1 to *numeric*
+ * names (e.g. "KP_7").  Warpd only stores level 0 / 1, so the level-0
+ * entry is almost always the navigation name.
+ *
+ * Strip the "KP_" prefix and, for navigation names, map the
+ * equivalent digit so that pressing numpad 7 yields the label "7".
+ */
+static void normalize_numpad_name(char *name)
+{
+	if (!strncmp(name, "KP_", 3)) {
+		const char *suffix = name + 3;
+
+		/* Already a digit (e.g. "KP_7") — just strip the prefix. */
+		if (suffix[0] >= '0' && suffix[0] <= '9' &&
+		    suffix[1] == '\0') {
+			memmove(name, suffix, 2);
+			return;
+		}
+
+		/* Map navigation names to their digit equivalents. */
+		static const struct { const char *nav; char digit; } m[] = {
+			{"Home",   '7'},
+			{"Up",     '8'},
+			{"Prior",  '9'},
+			{"Left",   '4'},
+			{"Begin",  '5'},
+			{"Right",  '6'},
+			{"End",    '1'},
+			{"Down",   '2'},
+			{"Next",   '3'},
+			{"Insert", '0'},
+		};
+
+		for (size_t j = 0; j < sizeof m / sizeof m[0]; j++) {
+			if (!strcmp(suffix, m[j].nav)) {
+				name[0] = m[j].digit;
+				name[1] = '\0';
+				return;
+			}
+		}
+
+		/* Other KP_ keys (KP_Add, …) are left unchanged so they
+		 * do not accidentally match a hint label. */
+	}
+}
+
 static void handle_keymap(void *data,
 			  struct wl_keyboard *wl_keyboard,
 			  uint32_t format, int32_t fd, uint32_t size)
@@ -92,14 +142,17 @@ static void handle_keymap(void *data,
 		if (xkb_keymap_key_get_syms_by_level(xkbmap, i+8,
 						     xkb_state_key_get_layout(xkbstate, i+8),
 						     0, &syms)) {
-			xkb_keysym_get_name(syms[0], keymap[i].name, sizeof keymap[i].name);
+			xkb_keysym_get_name(syms[0], keymap[i].name,
+					    sizeof keymap[i].name);
+			normalize_numpad_name(keymap[i].name);
 		}
 
 		if (xkb_keymap_key_get_syms_by_level(xkbmap, i+8,
 						     xkb_state_key_get_layout(xkbstate, i+8),
-						     1,
-						     &syms)) {
-			xkb_keysym_get_name(syms[0], keymap[i].shifted_name, sizeof keymap[i].shifted_name);
+						     1, &syms)) {
+			xkb_keysym_get_name(syms[0], keymap[i].shifted_name,
+						    sizeof keymap[i].shifted_name);
+			normalize_numpad_name(keymap[i].shifted_name);
 		}
 	}
 	xkb_state_unref(xkbstate);
@@ -142,7 +195,12 @@ static struct surface *input_surface = NULL;
  */
 void way_input_grab_keyboard()
 {
-	input_surface = create_surface(&screens[0], -1, -1, 1, 1, 1);
+	struct screen *scr;
+
+	refresh_ptr_position();
+	scr = ptr.scr ? ptr.scr : &screens[0];
+
+	input_surface = create_surface(scr, -1, -1, 1, 1, 1);
 
 	wl_display_flush(wl.dpy);
 	input_grabbed = 0;

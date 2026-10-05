@@ -126,5 +126,6 @@ void way_copy_selection();
 void way_commit();
 void way_init();
 void init_input();
+void refresh_ptr_position();
 
 #endif
